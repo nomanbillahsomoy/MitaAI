@@ -26,9 +26,12 @@ jobs:
           wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x gradlew
 
-      - name: Configure Gradle Memory Limit
+      - name: Configure Gradle Properties
         run: |
-          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" > gradle.properties
+          echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" > gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.nonTransitiveRClass=true" >> gradle.properties
+          echo "kotlin.code.style=official" >> gradle.properties
 
       - name: Build with Gradle
         run: ./gradlew assembleDebug --no-daemon
