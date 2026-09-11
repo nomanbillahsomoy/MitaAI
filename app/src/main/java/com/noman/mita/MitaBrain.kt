@@ -1,5 +1,6 @@
-﻿package com.noman.mita
+package com.noman.mita
 
+import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -11,59 +12,84 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
-class MitaBrain(
-    private val memoryManager: MemoryManager,
-    private val actionHandler: ActionHandler
-) {
+class MitaBrain(context: Context) {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private val gson = Gson()
     private val mediaType = "application/json; charset=utf-8".toMediaType()
+    private val gson = Gson()
 
-    suspend fun processUserMessage(apiKey: String, userMessage: String): String = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) {
-            return@withContext "বন্ধু, তোমার Gemini API Key সেট করা হয়নি! ওপরের সেটিংসে গিয়ে তোমার ফ্রি API Key দিয়ে দাও।"
-        }
+    private val actionHandler = ActionHandler(context)
+    private val memoryManager = MemoryManager(context)
 
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=$apiKey"
-        val requestJson = buildGeminiRequest(userMessage)
+    // Chat history memory
+    private val chatHistory = mutableListOf<ChatMessage>()
 
-        try {
-            val request = Request.Builder()
-                .url(url)
-                .post(requestJson.toString().toRequestBody(mediaType))
-                .build()
+    data class ChatMessage(val isUser: Boolean, val text: String)
 
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
+    suspend fun processCommand(userMessage: String, apiKeysString: String, onSpeak: (String) -> Unit): String = withContext(Dispatchers.IO) {
+        val keys = apiKeysString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        if (keys.isEmpty()) return@withContext "এপিআই কি (API Key) পাওয়া যায়নি। সেটিংসে গিয়ে Key দিন।"
 
-            if (!response.isSuccessful) {
-                return@withContext "দুঃখিত বন্ধু, এআই সার্ভারের সাথে সংযোগে একটু সমস্যা হয়েছে: ${response.code}"
+        // Add to history
+        chatHistory.add(ChatMessage(true, userMessage))
+
+        val requestJson = buildGeminiRequest()
+        var lastError = ""
+
+        for (apiKey in keys) {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=$apiKey"
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .post(requestJson.toString().toRequestBody(mediaType))
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                if (response.isSuccessful) {
+                    val mitaText = parseAndExecuteResponse(responseBody, apiKey, userMessage)
+                    chatHistory.add(ChatMessage(false, mitaText))
+                    return@withContext mitaText
+                } else {
+                    lastError = response.code.toString()
+                    // If Rate Limited (429) or Unauthorized (401), try the next key!
+                    if (response.code == 429 || response.code == 401) {
+                        continue
+                    } else {
+                        return@withContext "সার্ভার এরর: ${response.code}"
+                    }
+                }
+            } catch (e: Exception) {
+                lastError = e.localizedMessage ?: "Unknown Error"
+                continue
             }
-
-            parseAndExecuteResponse(responseBody, apiKey, userMessage)
-        } catch (e: Exception) {
-            "নেটওয়ার্ক সমস্যা হয়েছে বন্ধু: ${e.localizedMessage}"
         }
+        
+        // If all keys failed
+        return@withContext "দুঃখিত বন্ধু, এআই সার্ভারের সাথে সংযোগে সমস্যা হচ্ছে (Error: $lastError)। একটু পরে আবার চেষ্টা করো, অথবা সেটিংসে কমা (,) দিয়ে আরেকটি নতুন এপিআই কি যুক্ত করো।"
     }
 
-    private fun buildGeminiRequest(userMessage: String): JsonObject {
+    private fun buildGeminiRequest(): JsonObject {
         val root = JsonObject()
 
-        // 1. System Instruction
+        // 1. System Instructions
         val systemInstruction = JsonObject()
         val sysParts = JsonArray()
         val sysText = JsonObject()
 
-        val memoryContext = memoryManager.getMemorySummary()
+        val memoryContext = memoryManager.getAllFacts().joinToString(", ")
         val prompt = """
-            তোমার নাম 'মিতা' (Mita)। তুমি ব্যবহারকারী নোমানের সবচেয়ে ঘনিষ্ঠ, আন্তরিক ও বিশ্বস্ত বন্ধু এবং ব্যক্তিগত এআই।
-            তোমার বৈশিষ্ট্য ও নিয়মাবলী:
-            ১. নোমানকে সবসময় ঘনিষ্ঠ বন্ধুর মতো 'তুমি' সম্বোধনে কথা বলবে।
-            ২. তোমার ভাবভঙ্গি হবে ইতিবাচক, রসিক, সাহায্যকারী ও অত্যন্ত যত্নশীল।
+            তুমি হলে 'মিতা' (Mita), একজন অত্যন্ত বন্ধুত্বপূর্ণ, চটপটে এবং হেল্পফুল পার্সোনাল এআই অ্যাসিস্ট্যান্ট। 
+            তোমার ব্যবহারকারীর নাম 'নোমান'। তুমি নোমানকে 'তুমি' বা 'বন্ধু' বলে সম্বোধন করবে। 
+            তোমার ব্যক্তিত্ব হবে একদম একজন সত্যিকারের বন্ধুর মতো।
+            
+            [নির্দেশনা]:
+            ১. সব সময় বাংলায় উত্তর দেবে। 
+            ২. খুব স্বাভাবিক এবং ইনফরমাল ভাষায় কথা বলবে (যেমন: 'কী অবস্থা বন্ধু?', 'অ্যালার্ম দিয়ে দিয়েছি!')।
             ৩. উত্তরগুলো স্বাভাবিক কথার মতো রাখবে (অতিরিক্ত দীর্ঘ না করে শ্রুতিমধুর ও প্রাণবন্ত)।
             ৪. নোমান যদি ফোনের কোনো কমান্ড দেয় (যেমন: ফ্ল্যাশলাইট, অ্যালার্ম, টাইমার, গুগল কিপ নোট, কল দেওয়া), তাহলে তুমি সংশ্লিষ্ট ফাংশন কল করবে।
             ৫. নোমান যদি নিজের সম্পর্কে কোনো নতুন তথ্য বা পছন্দ জানায়, তবে 'remember_user_fact' ফাংশন কল করে তা মনে রাখবে।
@@ -77,16 +103,22 @@ class MitaBrain(
         systemInstruction.add("parts", sysParts)
         root.add("systemInstruction", systemInstruction)
 
-        // 2. Contents
+        // 2. Contents (Chat History)
         val contents = JsonArray()
-        val contentObj = JsonObject()
-        contentObj.addProperty("role", "user")
-        val parts = JsonArray()
-        val userPart = JsonObject()
-        userPart.addProperty("text", userMessage)
-        parts.add(userPart)
-        contentObj.add("parts", parts)
-        contents.add(contentObj)
+        
+        // Take max 10 recent messages to prevent token limits (429)
+        val recentHistory = chatHistory.takeLast(10)
+        
+        for (msg in recentHistory) {
+            val contentObj = JsonObject()
+            contentObj.addProperty("role", if (msg.isUser) "user" else "model")
+            val parts = JsonArray()
+            val userPart = JsonObject()
+            userPart.addProperty("text", msg.text)
+            parts.add(userPart)
+            contentObj.add("parts", parts)
+            contents.add(contentObj)
+        }
         root.add("contents", contents)
 
         // 3. Tools / Function Declarations
@@ -94,42 +126,31 @@ class MitaBrain(
         val toolObj = JsonObject()
         val functionDeclarations = JsonArray()
 
-        // Tool: toggle_flashlight
         functionDeclarations.add(createFunctionDef(
             "toggle_flashlight",
             "ফোনের ফ্ল্যাশলাইট বা টর্চ জ্বালানো অথবা নেভানো",
             listOf("enable" to "BOOLEAN")
         ))
-
-        // Tool: set_alarm
         functionDeclarations.add(createFunctionDef(
             "set_alarm",
             "নির্দিষ্ট সময়ে অ্যালার্ম সেট করা",
             listOf("hour" to "INTEGER", "minute" to "INTEGER", "message" to "STRING")
         ))
-
-        // Tool: set_timer
         functionDeclarations.add(createFunctionDef(
             "set_timer",
             "নির্দিষ্ট সেকেন্ড বা মিনিটের জন্য কাউন্টডাউন টাইমার দেওয়া",
             listOf("seconds" to "INTEGER", "message" to "STRING")
         ))
-
-        // Tool: save_to_keep
         functionDeclarations.add(createFunctionDef(
             "save_to_keep",
             "গুগল কিপ (Google Keep) অথবা নোটস অ্যাপে কোনো নোট সংরক্ষণ করা",
             listOf("content" to "STRING")
         ))
-
-        // Tool: dial_phone
         functionDeclarations.add(createFunctionDef(
             "dial_phone",
             "ফোনের কোনো নাম্বারে কল ডায়াল করা",
             listOf("phone_number" to "STRING")
         ))
-
-        // Tool: remember_user_fact
         functionDeclarations.add(createFunctionDef(
             "remember_user_fact",
             "ব্যবহারকারীর কোনো নতুন ব্যক্তিগত পছন্দ, অভ্যাস বা তথ্য দীর্ঘমেয়াদী স্মৃতিতে সেভ করা",
