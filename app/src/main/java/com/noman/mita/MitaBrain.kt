@@ -28,7 +28,7 @@ class MitaBrain(
             return@withContext "বন্ধু, তোমার Gemini API Key সেট করা হয়নি! ওপরের সেটিংসে গিয়ে তোমার ফ্রি API Key দিয়ে দাও।"
         }
 
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=$apiKey"
         val requestJson = buildGeminiRequest(userMessage)
 
         try {
