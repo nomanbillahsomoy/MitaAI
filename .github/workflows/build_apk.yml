@@ -26,6 +26,10 @@ jobs:
           wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x gradlew
 
+      - name: Configure Gradle Memory Limit
+        run: |
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" > gradle.properties
+
       - name: Build with Gradle
         run: ./gradlew assembleDebug --no-daemon
 
