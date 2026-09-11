@@ -1,0 +1,7 @@
+﻿<resources>
+    <string name="app_name">Mita AI</string>
+    <string name="mita_status_idle">মিতার সাথে কথা বলতে মাইকে চাপুন</string>
+    <string name="mita_status_listening">মিতা শুনছে...</string>
+    <string name="mita_status_thinking">মিতা চিন্তা করছে...</string>
+    <string name="mita_status_speaking">মিতা উত্তর দিচ্ছে...</string>
+</resources>

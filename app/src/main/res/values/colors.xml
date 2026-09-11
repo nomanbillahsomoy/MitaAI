@@ -1,0 +1,9 @@
+﻿<resources>
+    <color name="black">#FF0B0F19</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="primary_neon">#FF00E5FF</color>
+    <color name="secondary_purple">#FF7C4DFF</color>
+    <color name="card_bg">#FF161E2E</color>
+    <color name="text_primary">#FFF1F5F9</color>
+    <color name="text_secondary">#FF94A3B8</color>
+</resources>
