@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
@@ -21,8 +21,13 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Download and setup gradlew
+        run: |
+          wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew
+          chmod +x gradlew
+
       - name: Build with Gradle
-        run: .\gradlew.bat assembleDebug
+        run: ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
