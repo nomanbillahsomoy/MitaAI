@@ -77,7 +77,7 @@ class MitaBrain(private val memoryManager: MemoryManager, private val actionHand
         val sysParts = JsonArray()
         val sysText = JsonObject()
 
-        val memoryContext = memoryManager.getAllFacts().joinToString(", ")
+        val memoryContext = memoryManager.getMemorySummary()
         val prompt = """
             তুমি হলে 'মিতা' (Mita), একজন অত্যন্ত বন্ধুত্বপূর্ণ, চটপটে এবং হেল্পফুল পার্সোনাল এআই অ্যাসিস্ট্যান্ট। 
             তোমার ব্যবহারকারীর নাম 'নোমান'। তুমি নোমানকে 'তুমি' বা 'বন্ধু' বলে সম্বোধন করবে। 
