@@ -1,6 +1,5 @@
 package com.noman.mita
 
-import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -12,7 +11,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
-class MitaBrain(context: Context) {
+class MitaBrain(private val memoryManager: MemoryManager, private val actionHandler: ActionHandler) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -21,16 +20,13 @@ class MitaBrain(context: Context) {
     private val mediaType = "application/json; charset=utf-8".toMediaType()
     private val gson = Gson()
 
-    private val actionHandler = ActionHandler(context)
-    private val memoryManager = MemoryManager(context)
-
     // Chat history memory
     private val chatHistory = mutableListOf<ChatMessage>()
 
     data class ChatMessage(val isUser: Boolean, val text: String)
 
-    suspend fun processCommand(userMessage: String, apiKeysString: String, onSpeak: (String) -> Unit): String = withContext(Dispatchers.IO) {
-        val keys = apiKeysString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    suspend fun processUserMessage(apiKey: String, userMessage: String): String = withContext(Dispatchers.IO) {
+        val keys = apiKey.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         if (keys.isEmpty()) return@withContext "এপিআই কি (API Key) পাওয়া যায়নি। সেটিংসে গিয়ে Key দিন।"
 
         // Add to history
@@ -39,8 +35,8 @@ class MitaBrain(context: Context) {
         val requestJson = buildGeminiRequest()
         var lastError = ""
 
-        for (apiKey in keys) {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=$apiKey"
+        for (key in keys) {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=$key"
             try {
                 val request = Request.Builder()
                     .url(url)
@@ -51,7 +47,7 @@ class MitaBrain(context: Context) {
                 val responseBody = response.body?.string() ?: ""
 
                 if (response.isSuccessful) {
-                    val mitaText = parseAndExecuteResponse(responseBody, apiKey, userMessage)
+                    val mitaText = parseAndExecuteResponse(responseBody, key, userMessage)
                     chatHistory.add(ChatMessage(false, mitaText))
                     return@withContext mitaText
                 } else {
